@@ -7,8 +7,6 @@ document.addEventListener('DOMContentLoaded', () => {
     const modal = document.getElementById('analysisModal');
     const closeBtn = modal.querySelector('.close-btn');
     const analysisResults = document.getElementById('analysisResults');
-    let isTranscribing = false;
-    let recognition = null;
 
     // Extract YouTube video ID from various URL formats
     const getYouTubeVideoId = (url) => {
@@ -24,52 +22,6 @@ document.addEventListener('DOMContentLoaded', () => {
             return `https://www.youtube.com/embed/${videoId}?enablejsapi=1`;
         }
         return url;
-    };
-
-    // Initialize speech recognition
-    const initializeSpeechRecognition = () => {
-        try {
-            const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
-            recognition = new SpeechRecognition();
-            recognition.continuous = true;
-            recognition.interimResults = true;
-            recognition.lang = 'en-US';
-
-            recognition.onresult = (event) => {
-                let currentTranscript = '';
-                for (let i = 0; i < event.results.length; i++) {
-                    if (event.results[i].isFinal) {
-                        currentTranscript += event.results[i][0].transcript + '\n';
-                    }
-                }
-                transcriptArea.value += currentTranscript;
-                transcriptArea.scrollTop = transcriptArea.scrollHeight;
-            };
-
-            recognition.onerror = (event) => {
-                console.error('Speech recognition error:', event.error);
-                isTranscribing = false;
-                updateTranscriptionStatus();
-            };
-
-            recognition.onend = () => {
-                if (isTranscribing) {
-                    recognition.start();
-                }
-            };
-
-            return true;
-        } catch (error) {
-            console.error('Speech recognition not supported:', error);
-            return false;
-        }
-    };
-
-    // Update transcription status message
-    const updateTranscriptionStatus = () => {
-        transcriptionStatus.textContent = isTranscribing 
-            ? 'Transcribing...' 
-            : 'Play the video to start transcription';
     };
 
     // Handle video form submission
@@ -101,32 +53,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 `;
             }
 
-            transcriptArea.value = '';
-            
-            const player = document.getElementById('videoPlayer');
-            player.addEventListener('play', () => {
-                if (recognition && !isTranscribing) {
-                    isTranscribing = true;
-                    recognition.start();
-                    updateTranscriptionStatus();
-                }
-            });
-
-            player.addEventListener('pause', () => {
-                if (recognition && isTranscribing) {
-                    isTranscribing = false;
-                    recognition.stop();
-                    updateTranscriptionStatus();
-                }
-            });
-
-            player.addEventListener('ended', () => {
-                if (recognition && isTranscribing) {
-                    isTranscribing = false;
-                    recognition.stop();
-                    updateTranscriptionStatus();
-                }
-            });
+            transcriptionStatus.textContent = 'Ready for transcript input';
         }
     });
 
@@ -139,16 +66,24 @@ document.addEventListener('DOMContentLoaded', () => {
             modal.style.display = 'block';
             analysisResults.innerHTML = '<p>Analyzing content...</p>';
 
-            // Replace with your backend endpoint
-            const response = await fetch('/api/analyze', {
+            // Create text files from the input contents
+            const notesBlob = new Blob([notesContent], { type: 'text/plain' });
+            const transcriptBlob = new Blob([transcriptContent], { type: 'text/plain' });
+
+            // Create file objects from the blobs
+            const notesFile = new File([notesBlob], 'notes.txt', { type: 'text/plain' });
+            const transcriptFile = new File([transcriptBlob], 'transcript.txt', { type: 'text/plain' });
+
+            // Create a FormData object to send files in a multipart/form-data format
+            const formData = new FormData();
+            formData.append('notes_file', notesFile);
+            formData.append('transcript_file', transcriptFile);
+
+            // Replace with your Gemini backend endpoint
+            const response = await fetch('https://notewise-2ihi.onrender.com/compare-notes-gemini', {
                 method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                },
-                body: JSON.stringify({
-                    notes: notesContent,
-                    transcript: transcriptContent
-                })
+                body: formData,  // Use FormData for file uploads
+                mode: 'no-cors', // This disables CORS checks
             });
 
             if (!response.ok) {
@@ -156,13 +91,16 @@ document.addEventListener('DOMContentLoaded', () => {
             }
 
             const data = await response.json();
+
+            console.log('Response Data:', data.enhanced_notes);
+
             analysisResults.innerHTML = `
                 <div class="analysis-content">
-                    ${data.analysis}
+                    ${data.enhanced_notes}
                 </div>
             `;
         } catch (error) {
-            console.error('Error during analysis:', error);
+            console.log('Error during analysis:', error);
             analysisResults.innerHTML = `
                 <div class="error-message">
                     An error occurred during analysis. Please try again later.
@@ -182,9 +120,4 @@ document.addEventListener('DOMContentLoaded', () => {
             modal.style.display = 'none';
         }
     });
-
-    // Initialize speech recognition when the page loads
-    if (!initializeSpeechRecognition()) {
-        transcriptionStatus.textContent = 'Speech recognition is not supported in this browser';
-    }
 });
