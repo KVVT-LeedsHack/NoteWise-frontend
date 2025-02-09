@@ -82,8 +82,7 @@ document.addEventListener('DOMContentLoaded', () => {
             // Replace with your Gemini backend endpoint
             const response = await fetch('https://notewise-2ihi.onrender.com/compare-notes-gemini', {
                 method: 'POST',
-                body: formData,  // Use FormData for file uploads
-                mode: 'no-cors', // This disables CORS checks
+                body: formData  // Use FormData for file uploads
             });
 
             if (!response.ok) {
